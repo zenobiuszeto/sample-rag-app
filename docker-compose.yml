@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: bankrag-postgres
+    environment:
+      POSTGRES_DB: bankrag
+      POSTGRES_USER: bankrag
+      POSTGRES_PASSWORD: bankrag_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bankrag"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Ollama for local LLM (uncomment to use)
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: bankrag-ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+
+volumes:
+  pgdata:
+  # ollama_data:

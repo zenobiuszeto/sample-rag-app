@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Banking RAG Assistant</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #232733;
+    --border: #2e3345;
+    --text: #e4e6ef;
+    --muted: #8b8fa3;
+    --accent: #6c8aff;
+    --accent-dim: #3d5afe22;
+    --green: #34d399;
+    --orange: #f59e0b;
+    --red: #ef4444;
+    --radius: 12px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 300px;
+    min-width: 300px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sidebar-header h1 .icon { font-size: 22px; }
+  .sidebar-header p { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .status-panel {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .status-panel h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 10px; }
+  .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .stat-card .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-card .value { font-size: 18px; font-weight: 700; color: var(--accent); margin-top: 2px; }
+  .stat-card .value.loading { color: var(--muted); font-size: 12px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .status-dot.up { background: var(--green); }
+  .status-dot.down { background: var(--red); }
+
+  .sample-queries {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+  }
+  .sample-queries h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 12px; }
+  .query-group { margin-bottom: 16px; }
+  .query-group-title { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .query-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    transition: all .15s;
+    line-height: 1.4;
+  }
+  .query-btn:hover { background: var(--accent-dim); border-color: var(--accent); }
+
+  /* ── Main Chat ── */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .chat-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+  }
+  .chat-header .session { font-size: 12px; color: var(--muted); font-family: monospace; }
+  .filter-select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .filter-select:focus { outline: none; border-color: var(--accent); }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .chat-messages::-webkit-scrollbar { width: 6px; }
+  .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .message {
+    max-width: 85%;
+    animation: fadeIn .25s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .message.user { align-self: flex-end; }
+  .message.assistant { align-self: flex-start; }
+
+  .msg-bubble {
+    padding: 14px 18px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .message.user .msg-bubble {
+    background: var(--accent);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .message.assistant .msg-bubble {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+
+  .msg-meta {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--muted);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .msg-meta .tag {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 10px;
+  }
+
+  .sources-toggle {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  .sources-toggle:hover { background: var(--accent-dim); }
+  .sources-list {
+    margin-top: 8px;
+    padding: 10px 14px;
+    background: var(--bg);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 12px;
+    display: none;
+  }
+  .sources-list.open { display: block; }
+  .source-item {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .source-item:last-child { border-bottom: none; }
+  .source-item .sim {
+    color: var(--green);
+    font-weight: 600;
+    font-family: monospace;
+    white-space: nowrap;
+  }
+
+  .typing-indicator {
+    display: flex;
+    gap: 4px;
+    padding: 14px 18px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    border-bottom-left-radius: 4px;
+    width: fit-content;
+  }
+  .typing-indicator span {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--muted);
+    animation: bounce .6s infinite alternate;
+  }
+  .typing-indicator span:nth-child(2) { animation-delay: .2s; }
+  .typing-indicator span:nth-child(3) { animation-delay: .4s; }
+  @keyframes bounce { to { opacity: .3; transform: translateY(-4px); } }
+
+  .welcome {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--muted);
+    padding: 40px;
+  }
+  .welcome .icon { font-size: 48px; margin-bottom: 16px; }
+  .welcome h2 { color: var(--text); font-size: 22px; margin-bottom: 8px; }
+  .welcome p { max-width: 440px; line-height: 1.6; font-size: 14px; }
+
+  /* ── Input Bar ── */
+  .input-bar {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  .input-bar textarea {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    min-height: 46px;
+    max-height: 120px;
+    line-height: 1.4;
+  }
+  .input-bar textarea:focus { outline: none; border-color: var(--accent); }
+  .input-bar textarea::placeholder { color: var(--muted); }
+
+  .send-btn {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    width: 46px;
+    height: 46px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity .15s;
+    flex-shrink: 0;
+  }
+  .send-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .send-btn:hover:not(:disabled) { opacity: .85; }
+  .send-btn svg { width: 20px; height: 20px; }
+
+  .new-session-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .new-session-btn:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ── Results Panel ── */
+  .results-panel {
+    width: 340px;
+    min-width: 340px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .results-panel.visible { display: flex; }
+  .results-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .results-header h2 {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .close-results {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 20px;
+    padding: 4px;
+    line-height: 1;
+    transition: color .15s;
+  }
+  .close-results:hover { color: var(--text); }
+  .results-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+  }
+  .results-content::-webkit-scrollbar { width: 6px; }
+  .results-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .result-section {
+    margin-bottom: 24px;
+  }
+  .result-section h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    align-items: center;
+  }
+  .metric-label {
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .metric-value {
+    color: var(--text);
+    font-weight: 600;
+    font-family: monospace;
+    font-size: 14px;
+  }
+  .metric-value.good { color: var(--green); }
+  .metric-value.warning { color: var(--orange); }
+  .metric-value.bad { color: var(--red); }
+
+  .source-breakdown {
+    margin-top: 4px;
+  }
+  .source-type-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .source-type-name {
+    color: var(--text);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .source-type-icon {
+    font-size: 14px;
+  }
+  .source-type-count {
+    color: var(--accent);
+    font-weight: 700;
+    font-family: monospace;
+    font-size: 13px;
+  }
+
+  .similarity-chart {
+    margin-top: 4px;
+  }
+  .similarity-bar {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .similarity-label {
+    width: 45px;
+    font-size: 10px;
+    color: var(--muted);
+    font-family: monospace;
+    font-weight: 600;
+  }
+  .similarity-bar-bg {
+    flex: 1;
+    height: 22px;
+    background: var(--bg);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--border);
+  }
+  .similarity-bar-fill {
+    height: 100%;
+    transition: width 0.4s ease;
+  }
+  .similarity-bar-fill.high { background: linear-gradient(90deg, var(--green), #22c55e); }
+  .similarity-bar-fill.medium { background: linear-gradient(90deg, var(--orange), #fb923c); }
+  .similarity-bar-fill.low { background: linear-gradient(90deg, var(--red), #f87171); }
+  .similarity-value {
+    margin-left: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: monospace;
+    color: var(--text);
+    min-width: 50px;
+  }
+
+  .query-display {
+    padding: 12px 14px;
+    background: var(--surface2);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.6;
+    font-style: italic;
+    margin-bottom: 16px;
+    border-left: 3px solid var(--accent);
+  }
+
+  .no-results {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .no-results .icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.3;
+  }
+  .no-results p {
+    line-height: 1.6;
+    max-width: 240px;
+    margin: 0 auto;
+  }
+
+  .quality-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .quality-indicator.excellent { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+  .quality-indicator.good { background: rgba(52, 211, 153, 0.1); color: var(--green); }
+  .quality-indicator.fair { background: rgba(245, 158, 11, 0.15); color: var(--orange); }
+  .quality-indicator.poor { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+  .quality-indicator .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  @media (max-width: 1200px) {
+    .results-panel { display: none !important; }
+  }
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1><span class="icon">🏦</span> Banking RAG</h1>
+    <p>AI-powered banking assistant</p>
+  </div>
+
+  <div class="status-panel">
+    <h3>System Status</h3>
+    <div id="statusIndicator" style="margin-bottom:10px; font-size:13px;">
+      <span class="status-dot down" id="statusDot"></span>
+      <span id="statusText">Connecting...</span>
+    </div>
+    <div class="status-grid">
+      <div class="stat-card"><div class="label">Customers</div><div class="value loading" id="statCustomers">--</div></div>
+      <div class="stat-card"><div class="label">Accounts</div><div class="value loading" id="statAccounts">--</div></div>
+      <div class="stat-card"><div class="label">Transactions</div><div class="value loading" id="statTransactions">--</div></div>
+      <div class="stat-card"><div class="label">Embeddings</div><div class="value loading" id="statEmbeddings">--</div></div>
+    </div>
+  </div>
+
+  <div class="sample-queries">
+    <h3>Sample Queries</h3>
+
+    <div class="query-group">
+      <div class="query-group-title">📋 Policies</div>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">What is the overdraft protection policy?</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">What credit score do I need for a mortgage?</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">Explain the wire transfer fees and limits</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">How does the credit card rewards program work?</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">What is the dispute resolution process?</button>
+    </div>
+
+    <div class="query-group">
+      <div class="query-group-title">👥 Customers</div>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">Show me customers in the PRIVATE_BANKING segment</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">Find high-risk customers with low credit scores</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">Which customers are from New York?</button>
+    </div>
+
+    <div class="query-group">
+      <div class="query-group-title">💳 Accounts</div>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">Show me high-balance savings accounts</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">What are the interest rates on savings accounts?</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">Find frozen or closed accounts</button>
+    </div>
+
+    <div class="query-group">
+      <div class="query-group-title">📊 Transactions</div>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">What are the top spending categories across accounts?</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">Show transaction patterns for credit card accounts</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">Which accounts have the most ATM transactions?</button>
+    </div>
+
+    <div class="query-group">
+      <div class="query-group-title">🔍 Compliance &amp; Risk</div>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">What are the AML and KYC requirements?</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">When do transactions trigger fraud alerts?</button>
+      <button class="query-btn" onclick="sendQuery(this.textContent)">What are the account closure rules?</button>
+    </div>
+  </div>
+</aside>
+
+<!-- Main Chat Area -->
+<main class="main">
+  <div class="chat-header">
+    <div>
+      <span style="font-weight:600;">Chat</span>
+      <span class="session" id="sessionLabel"></span>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <select class="filter-select" id="sourceFilter" title="Filter retrieved documents by type">
+        <option value="">All Sources</option>
+        <option value="POLICY">Policies</option>
+        <option value="CUSTOMER_PROFILE">Customer Profiles</option>
+        <option value="ACCOUNT_SUMMARY">Account Summaries</option>
+        <option value="TRANSACTION_PATTERN">Transaction Patterns</option>
+      </select>
+      <button class="new-session-btn" onclick="newSession()">+ New Chat</button>
+    </div>
+  </div>
+
+  <div class="chat-messages" id="chatMessages">
+    <div class="welcome" id="welcomeScreen">
+      <div class="icon">🏦</div>
+      <h2>Banking RAG Assistant</h2>
+      <p>Ask questions about customer accounts, transaction patterns, and banking policies. Choose a sample query from the sidebar or type your own below.</p>
+    </div>
+  </div>
+
+  <div class="input-bar">
+    <textarea id="queryInput" placeholder="Ask about customers, accounts, transactions, or policies..." rows="1"
+              onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button class="send-btn" id="sendBtn" onclick="sendFromInput()" title="Send">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </button>
+  </div>
+</main>
+
+<!-- Results Panel -->
+<aside class="results-panel" id="resultsPanel">
+  <div class="results-header">
+    <h2>📊 Query Results</h2>
+    <button class="close-results" onclick="closeResults()" title="Close">×</button>
+  </div>
+  <div class="results-content" id="resultsContent">
+    <div class="no-results">
+      <div class="icon">📋</div>
+      <p>Run a query to see detailed results and metrics here.</p>
+    </div>
+  </div>
+</aside>
+
+<script>
+  // Use Spring Boot server port if opened from IntelliJ preview or other non-standard port
+  const API_BASE = (window.location.port === '8080' || window.location.port === '')
+    ? window.location.origin
+    : 'http://localhost:8080';
+  let sessionId = crypto.randomUUID();
+  let isLoading = false;
+  let lastQuery = '';
+
+  // ── Init ──
+  document.getElementById('sessionLabel').textContent = `#${sessionId.slice(0,8)}`;
+  fetchStatus();
+  setInterval(fetchStatus, 30000);
+
+  // ── Status ──
+  async function fetchStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/status`);
+      const data = await res.json();
+      document.getElementById('statusDot').className = 'status-dot up';
+      document.getElementById('statusText').textContent = 'Connected';
+      document.getElementById('statCustomers').textContent = fmt(data.customers);
+      document.getElementById('statCustomers').className = 'value';
+      document.getElementById('statAccounts').textContent = fmt(data.accounts);
+      document.getElementById('statAccounts').className = 'value';
+      document.getElementById('statTransactions').textContent = fmt(data.transactions);
+      document.getElementById('statTransactions').className = 'value';
+      document.getElementById('statEmbeddings').textContent = fmt(data.embeddings);
+      document.getElementById('statEmbeddings').className = 'value';
+    } catch {
+      document.getElementById('statusDot').className = 'status-dot down';
+      document.getElementById('statusText').textContent = 'Disconnected';
+    }
+  }
+
+  function fmt(n) {
+    if (n == null) return '--';
+    return n.toLocaleString();
+  }
+
+  // ── Chat ──
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendFromInput(); }
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }
+
+  function sendFromInput() {
+    const input = document.getElementById('queryInput');
+    const q = input.value.trim();
+    if (!q || isLoading) return;
+    input.value = '';
+    input.style.height = 'auto';
+    sendQuery(q);
+  }
+
+  async function sendQuery(query) {
+    if (isLoading) return;
+    isLoading = true;
+    document.getElementById('sendBtn').disabled = true;
+
+    // Store query for results panel
+    lastQuery = query;
+
+    // Remove welcome screen
+    const welcome = document.getElementById('welcomeScreen');
+    if (welcome) welcome.remove();
+
+    const container = document.getElementById('chatMessages');
+
+    // Add user message
+    appendMessage('user', query);
+
+    // Show typing indicator
+    const typingEl = document.createElement('div');
+    typingEl.className = 'message assistant';
+    typingEl.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+    container.appendChild(typingEl);
+    scrollToBottom();
+
+    try {
+      const sourceType = document.getElementById('sourceFilter').value;
+      const res = await fetch(`${API_BASE}/api/rag/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, sessionId, sourceType: sourceType || null })
+      });
+
+      const data = await res.json();
+      typingEl.remove();
+      sessionId = data.sessionId || sessionId;
+      document.getElementById('sessionLabel').textContent = `#${sessionId.slice(0,8)}`;
+
+      appendAssistantMessage(data);
+    } catch (err) {
+      typingEl.remove();
+      appendMessage('assistant', `Error: Could not reach the RAG API.\n\nMake sure the server is running at ${API_BASE}\n\n${err.message}`);
+    }
+
+    isLoading = false;
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('queryInput').focus();
+  }
+
+  function appendMessage(role, text) {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = `message ${role}`;
+    div.innerHTML = `<div class="msg-bubble">${escapeHtml(text)}</div>`;
+    container.appendChild(div);
+    scrollToBottom();
+  }
+
+  function appendAssistantMessage(data) {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = 'message assistant';
+
+    const sourcesId = 'src-' + Date.now();
+    let sourcesHtml = '';
+    if (data.sources && data.sources.length > 0) {
+      const items = data.sources.map(s =>
+        `<div class="source-item">
+          <span><strong>${s.sourceType}</strong> — ${escapeHtml(s.snippet)}</span>
+          <span class="sim">${(s.similarity * 100).toFixed(1)}%</span>
+        </div>`
+      ).join('');
+      sourcesHtml = `
+        <button class="sources-toggle" onclick="toggleSources('${sourcesId}')">
+          📎 ${data.sources.length} sources retrieved
+        </button>
+        <div class="sources-list" id="${sourcesId}">${items}</div>
+      `;
+    }
+
+    div.innerHTML = `
+      <div class="msg-bubble">${escapeHtml(data.answer)}</div>
+      <div class="msg-meta">
+        <span class="tag">${data.documentsRetrieved} docs</span>
+        <span class="tag">${data.latencyMs}ms</span>
+        <span class="tag">embed: ${data.embeddingProvider}</span>
+        <span class="tag">llm: ${data.llmProvider}</span>
+      </div>
+      ${sourcesHtml}
+    `;
+    container.appendChild(div);
+    scrollToBottom();
+
+    // Update results panel
+    updateResultsPanel(data);
+  }
+
+  function toggleSources(id) {
+    document.getElementById(id).classList.toggle('open');
+  }
+
+  function newSession() {
+    sessionId = crypto.randomUUID();
+    document.getElementById('sessionLabel').textContent = `#${sessionId.slice(0,8)}`;
+    const container = document.getElementById('chatMessages');
+    container.innerHTML = `
+      <div class="welcome" id="welcomeScreen">
+        <div class="icon">🏦</div>
+        <h2>Banking RAG Assistant</h2>
+        <p>Ask questions about customer accounts, transaction patterns, and banking policies. Choose a sample query from the sidebar or type your own below.</p>
+      </div>`;
+  }
+
+  function scrollToBottom() {
+    const el = document.getElementById('chatMessages');
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function updateResultsPanel(data) {
+    const panel = document.getElementById('resultsPanel');
+    const content = document.getElementById('resultsContent');
+
+    // Calculate metrics
+    const avgSimilarity = data.sources && data.sources.length > 0
+      ? data.sources.reduce((sum, s) => sum + s.similarity, 0) / data.sources.length
+      : 0;
+    const maxSimilarity = data.sources && data.sources.length > 0
+      ? Math.max(...data.sources.map(s => s.similarity))
+      : 0;
+    const minSimilarity = data.sources && data.sources.length > 0
+      ? Math.min(...data.sources.map(s => s.similarity))
+      : 0;
+
+    // Determine quality
+    let quality, qualityClass;
+    if (avgSimilarity >= 0.7) {
+      quality = 'Excellent';
+      qualityClass = 'excellent';
+    } else if (avgSimilarity >= 0.5) {
+      quality = 'Good';
+      qualityClass = 'good';
+    } else if (avgSimilarity >= 0.3) {
+      quality = 'Fair';
+      qualityClass = 'fair';
+    } else {
+      quality = 'Poor';
+      qualityClass = 'poor';
+    }
+
+    // Get latency class
+    let latencyClass = 'good';
+    if (data.latencyMs > 1000) latencyClass = 'warning';
+    if (data.latencyMs > 3000) latencyClass = 'bad';
+
+    // Count source types
+    const sourceTypes = {};
+    const sourceIcons = {
+      'POLICY': '📋',
+      'CUSTOMER_PROFILE': '👤',
+      'ACCOUNT_SUMMARY': '💳',
+      'TRANSACTION_PATTERN': '📊'
+    };
+
+    if (data.sources) {
+      data.sources.forEach(s => {
+        sourceTypes[s.sourceType] = (sourceTypes[s.sourceType] || 0) + 1;
+      });
+    }
+
+    // Build source breakdown HTML
+    let sourceBreakdownHtml = '';
+    for (const [type, count] of Object.entries(sourceTypes)) {
+      const icon = sourceIcons[type] || '📄';
+      const displayName = type.replace(/_/g, ' ');
+      sourceBreakdownHtml += `
+        <div class="source-type-item">
+          <span class="source-type-name">
+            <span class="source-type-icon">${icon}</span>
+            ${displayName}
+          </span>
+          <span class="source-type-count">${count}</span>
+        </div>
+      `;
+    }
+
+    // Build similarity chart HTML
+    let similarityChartHtml = '';
+    if (data.sources && data.sources.length > 0) {
+      // Show top 5 sources
+      const topSources = [...data.sources].slice(0, 5);
+      topSources.forEach((source, idx) => {
+        const simPercent = (source.similarity * 100).toFixed(1);
+        const barClass = source.similarity >= 0.7 ? 'high' : source.similarity >= 0.4 ? 'medium' : 'low';
+        similarityChartHtml += `
+          <div class="similarity-bar">
+            <span class="similarity-label">#${idx + 1}</span>
+            <div class="similarity-bar-bg">
+              <div class="similarity-bar-fill ${barClass}" style="width: ${simPercent}%"></div>
+            </div>
+            <span class="similarity-value">${simPercent}%</span>
+          </div>
+        `;
+      });
+    }
+
+    // Get the query from the stored variable
+    const queryDisplay = lastQuery || 'No query';
+
+    content.innerHTML = `
+      <div class="result-section">
+        <h3>Query Overview</h3>
+        <div class="query-display">"${escapeHtml(queryDisplay)}"</div>
+        <div class="metric-row">
+          <span class="metric-label">Quality</span>
+          <span class="quality-indicator ${qualityClass}">
+            <span class="dot"></span>
+            ${quality}
+          </span>
+        </div>
+      </div>
+
+      <div class="result-section">
+        <h3>Performance Metrics</h3>
+        <div class="metric-row">
+          <span class="metric-label">Response Time</span>
+          <span class="metric-value ${latencyClass}">${data.latencyMs}ms</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Documents Retrieved</span>
+          <span class="metric-value">${data.documentsRetrieved}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Avg Similarity</span>
+          <span class="metric-value ${avgSimilarity >= 0.5 ? 'good' : avgSimilarity >= 0.3 ? 'warning' : 'bad'}">
+            ${(avgSimilarity * 100).toFixed(1)}%
+          </span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Max Similarity</span>
+          <span class="metric-value ${maxSimilarity >= 0.7 ? 'good' : maxSimilarity >= 0.5 ? 'warning' : 'bad'}">
+            ${(maxSimilarity * 100).toFixed(1)}%
+          </span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Min Similarity</span>
+          <span class="metric-value">${(minSimilarity * 100).toFixed(1)}%</span>
+        </div>
+      </div>
+
+      <div class="result-section">
+        <h3>Source Breakdown</h3>
+        <div class="source-breakdown">
+          ${sourceBreakdownHtml || '<p style="color: var(--muted); font-size: 12px; text-align: center; padding: 20px;">No sources retrieved</p>'}
+        </div>
+      </div>
+
+      <div class="result-section">
+        <h3>Top Similarity Scores</h3>
+        <div class="similarity-chart">
+          ${similarityChartHtml || '<p style="color: var(--muted); font-size: 12px; text-align: center; padding: 20px;">No data available</p>'}
+        </div>
+      </div>
+
+      <div class="result-section">
+        <h3>System Info</h3>
+        <div class="metric-row">
+          <span class="metric-label">Embedding Provider</span>
+          <span class="metric-value">${data.embeddingProvider}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">LLM Provider</span>
+          <span class="metric-value">${data.llmProvider}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Session ID</span>
+          <span class="metric-value" style="font-size: 10px;">${data.sessionId.slice(0, 8)}...</span>
+        </div>
+      </div>
+    `;
+
+    // Show the panel
+    panel.classList.add('visible');
+  }
+
+  function closeResults() {
+    document.getElementById('resultsPanel').classList.remove('visible');
+  }
+
+  function scrollToBottom() {
+    const el = document.getElementById('chatMessages');
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+              .replace(/\n/g, '<br/>');
+  }
+</script>
+</body>
+</html>

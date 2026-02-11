@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: banking-rag
+  datasource:
+    url: jdbc:postgresql://localhost:5432/bankrag?reWriteBatchedInserts=true
+    username: bankrag
+    password: bankrag_secret
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+# RAG Configuration
+rag:
+  embedding:
+    # Options: local, openai
+    provider: local
+    # For local: dimension of the simple hash-based embeddings
+    dimension: 384
+    # For OpenAI: set your API key
+    openai-api-key: ${OPENAI_API_KEY:}
+    openai-model: text-embedding-3-small
+  llm:
+    # Options: openai, gemini, ollama, mock
+    provider: gemini
+    # OpenAI Configuration
+    openai-api-key: ${OPENAI_API_KEY:}
+    openai-model: gpt-4o-mini
+    # Google Gemini Configuration
+    gemini-api-key: ${GEMINI_API_KEY:}
+    gemini-model: gemini-2.0-flash
+    # Ollama Configuration
+    ollama-url: http://localhost:11434
+    ollama-model: llama3
+  retrieval:
+    top-k: 10
+    similarity-threshold: 0.3
+
+# Synthetic data generation
+synthetic:
+  customers: 100000
+  min-accounts-per-customer: 1
+  max-accounts-per-customer: 4
+  min-transactions-per-account: 5
+  max-transactions-per-account: 50
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.bankrag: INFO
+    org.hibernate.SQL: WARN
